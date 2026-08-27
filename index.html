@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Image to Shareable Link</title>
+    <style>
+        body { font-family: Arial; max-width: 500px; margin: 50px auto; padding: 20px; background: #f9f9f9; }
+        .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        input, button { display: block; width: 100%; margin: 15px 0; padding: 12px; box-sizing: border-box; font-size: 16px; border-radius: 8px; border: 1px solid #ddd; }
+        button { background: #0070f3; color: white; border: none; cursor: pointer; font-weight: bold; }
+        button:hover { background: #0051b3; }
+        #result { margin-top: 20px; background: #e9ecef; padding: 15px; border-radius: 8px; word-break: break-all; }
+        #debug { margin-top: 10px; font-size: 12px; color: #888; white-space: pre-wrap; word-break: break-all; max-height: 200px; overflow: auto; background: #f5f5f5; padding: 10px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+<div class="card">
+    <h1>📸 Generate Shareable Link</h1>
+    <form id="uploadForm">
+        <input type="file" id="imageInput" accept="image/*" required>
+        <input type="url" id="destInput" placeholder="https://example.com/destination" required>
+        <button type="submit">🚀 Generate Link</button>
+    </form>
+    <div id="result"></div>
+    <div id="debug"></div>
+</div>
+<script>
+const SUPABASE_URL = "https://zqfmjvqfikqbsfyuwovm.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_VlkAXGyZsciYB1IHrrvnSQ_1GqU2hKP";
+const IMGBB_KEY = "2cbedda8a86ff08dd28351add2e2ca29";
+
+document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const file = document.getElementById('imageInput').files[0];
+    const destination = document.getElementById('destInput').value;
+    const resultDiv = document.getElementById('result');
+    const debugDiv = document.getElementById('debug');
+
+    if (!file || !destination) return alert('Please fill all fields');
+    resultDiv.innerHTML = '⏳ Uploading...';
+    debugDiv.innerHTML = '';
+
+    try {
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+            const base64 = event.target.result.split(',')[1];
+            debugDiv.innerHTML += '📤 Image encoded.\n';
+
+            const imgbbRes = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ image: base64 })
+            });
+            const imgbbData = await imgbbRes.json();
+            debugDiv.innerHTML += `🖼️ ImgBB status: ${imgbbRes.status}\n`;
+            if (!imgbbRes.ok) throw new Error('ImgBB error: ' + JSON.stringify(imgbbData));
+            if (!imgbbData.data || !imgbbData.data.url) throw new Error('ImgBB response missing URL');
+            const imageUrl = imgbbData.data.url;
+            debugDiv.innerHTML += `✅ ImgBB uploaded: ${imageUrl}\n`;
+
+            const shortId = Math.random().toString(36).substring(2, 10);
+            debugDiv.innerHTML += `🔑 Short ID: ${shortId}\n`;
+
+            const payload = { id: shortId, image_url: imageUrl, destination_url: destination };
+            const supabaseRes = await fetch(`${SUPABASE_URL}/rest/v1/links`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'apikey': SUPABASE_ANON_KEY,
+                    'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                    'Prefer': 'return=minimal'
+                },
+                body: JSON.stringify(payload)
+            });
+            const responseText = await supabaseRes.text();
+            debugDiv.innerHTML += `📨 Supabase status: ${supabaseRes.status}\n`;
+            if (!supabaseRes.ok) throw new Error(`Supabase error (${supabaseRes.status}): ${responseText}`);
+
+            const fullUrl = `${window.location.origin}/${shortId}`;
+            resultDiv.innerHTML = `<b>✅ Your Link:</b><br><a href="${fullUrl}" target="_blank">${fullUrl}</a><br><small>Share this link with anyone!</small>`;
+        };
+        reader.readAsDataURL(file);
+    } catch (err) {
+        resultDiv.innerHTML = `<span style="color:red;">❌ Error: ${err.message}</span>`;
+        debugDiv.innerHTML += `❌ Catch Error: ${err.message}\n`;
+    }
+});
+</script>
+</body>
+</html>
